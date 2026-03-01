@@ -2,30 +2,53 @@ import { supabase } from "$lib/supabaseClient";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load() {
-    const { data: mon_hoc, error } = await supabase
-        .from("mon_hoc")
-        .select(`
-            id, ten_mon_hoc, ma_mon_hoc, ghi_chu,
-            khoa_mon_hoc (
-                khoa ( id, ten_khoa )
-            ),
-            nganh_he_mon (
-                id,
-                nganh ( id, ten_nganh, ma_nganh ),
-                he_dao_tao ( id, ten_he )
-            )
-        `)
-        .order("id", { ascending: true });
+    // Fetch mon_hoc cơ bản + các bảng lookup song song
+    const [monHocRes, khoaMonHocRes, nganhHeMonRes, khoaRes, nganhRes, heRes] = await Promise.all([
+        supabase.from("mon_hoc").select("id, ten_mon_hoc, ma_mon_hoc, ghi_chu").order("id", { ascending: true }),
+        supabase.from("khoa_mon_hoc").select("mon_hoc_id, khoa_id"),
+        supabase.from("nganh_he_mon").select("id, mon_hoc_id, nganh_id, he_id"),
+        supabase.from("khoa").select("id, ten_khoa"),
+        supabase.from("nganh").select("id, ten_nganh, ma_nganh"),
+        supabase.from("he_dao_tao").select("id, ten_he")
+    ]);
 
-    const { data: khoa_list } = await supabase.from("khoa").select("*");
-    const { data: nganh_list } = await supabase.from("nganh").select("*");
-    const { data: he_dao_tao_list } = await supabase.from("he_dao_tao").select("*");
+    if (monHocRes.error) console.error('[mon-hoc] mon_hoc error:', monHocRes.error.message);
+    if (khoaMonHocRes.error) console.error('[mon-hoc] khoa_mon_hoc error:', khoaMonHocRes.error.message);
+    if (nganhHeMonRes.error) console.error('[mon-hoc] nganh_he_mon error:', nganhHeMonRes.error.message);
+
+    const mon_hoc_list = monHocRes.data ?? [];
+    const khoa_mon_hoc_list = khoaMonHocRes.data ?? [];
+    const nganh_he_mon_list = nganhHeMonRes.data ?? [];
+    const khoa_map = Object.fromEntries((khoaRes.data ?? []).map(k => [k.id, k]));
+    const nganh_map = Object.fromEntries((nganhRes.data ?? []).map(n => [n.id, n]));
+    const he_map = Object.fromEntries((heRes.data ?? []).map(h => [h.id, h]));
+
+    // Merge thủ công: gắn khoa và nganh_he vào từng môn học
+    const mon_hoc = mon_hoc_list.map(mh => {
+        const khoa_mon_hoc = khoa_mon_hoc_list
+            .filter(km => km.mon_hoc_id === mh.id)
+            .map(km => ({ khoa: khoa_map[km.khoa_id] ?? null }))
+            .filter(km => km.khoa !== null);
+
+        const nganh_he_mon = nganh_he_mon_list
+            .filter(nh => nh.mon_hoc_id === mh.id)
+            .map(nh => ({
+                id: nh.id,
+                nganh: nganh_map[nh.nganh_id] ?? null,
+                he_dao_tao: he_map[nh.he_id] ?? null
+            }))
+            .filter(nh => nh.nganh !== null);
+
+        return { ...mh, khoa_mon_hoc, nganh_he_mon };
+    });
+
+    console.log('[mon-hoc] OK - merged', mon_hoc.length, 'records');
 
     return {
-        mon_hoc: mon_hoc ?? [],
-        khoa_list: khoa_list ?? [],
-        nganh_list: nganh_list ?? [],
-        he_dao_tao_list: he_dao_tao_list ?? []
+        mon_hoc,
+        khoa_list: khoaRes.data ?? [],
+        nganh_list: nganhRes.data ?? [],
+        he_dao_tao_list: heRes.data ?? []
     };
 }
 

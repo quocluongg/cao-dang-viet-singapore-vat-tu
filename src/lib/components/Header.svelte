@@ -1,10 +1,11 @@
 <script>
-	/** @type {{ session: import('@supabase/supabase-js').Session | null, handleLogout: () => Promise<void> }} */
-	let { session, handleLogout } = $props();
+	/** @type {{ session: import('@supabase/supabase-js').Session | null, handleLogout: () => Promise<void>, profile?: any }} */
+	let { session, handleLogout, profile = null } = $props();
 
 	function toggleTheme() {
 		document.documentElement.classList.toggle('dark');
 	}
+	let currentRole = $derived(profile?.role || 'giao_vien');
 </script>
 
 <header
@@ -23,12 +24,14 @@
 			<span class="material-symbols-outlined text-lg">redeem</span>
 			<span>Hỗ trợ</span>
 		</div>
-		<div
-			class="flex cursor-pointer items-center space-x-1.5 text-sm font-medium text-orange-500 hover:underline"
-		>
-			<span class="material-symbols-outlined fill-1 text-lg">star</span>
-			<span>Báo cáo</span>
-		</div>
+		{#if currentRole !== 'giao_vien'}
+			<div
+				class="flex cursor-pointer items-center space-x-1.5 text-sm font-medium text-orange-500 hover:underline"
+			>
+				<span class="material-symbols-outlined fill-1 text-lg">star</span>
+				<span>Báo cáo</span>
+			</div>
+		{/if}
 
 		<div class="flex items-center space-x-4">
 			<button class="relative text-slate-400 hover:text-slate-600">

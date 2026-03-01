@@ -8,23 +8,22 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Header from '$lib/components/Header.svelte';
 
-	let { children } = $props();
-	/** @type {import('@supabase/supabase-js').Session | null} */
-	let session = $state(null);
+	let { children, data } = $props();
+
+	let session = $derived(data.session);
+	let userProfile = $derived(data.profile);
+
 	let isAuthRoute = $derived(
 		['/login', '/signup', '/forgot-password'].includes($page.url.pathname)
 	);
 
 	onMount(() => {
-		supabase.auth.getSession().then(({ data: { session: s } }) => {
-			session = s;
-		});
-
 		const {
 			data: { subscription }
 		} = supabase.auth.onAuthStateChange((_event, _session) => {
-			session = _session;
-			invalidateAll();
+			if (_session?.user?.id !== session?.user?.id) {
+				invalidateAll();
+			}
 		});
 
 		return () => subscription.unsubscribe();
@@ -42,9 +41,9 @@
 	</div>
 {:else}
 	<div class="fixed inset-0 flex min-h-screen bg-[#f8fafc] font-['Inter'] text-slate-800">
-		<Sidebar activePath={$page.url.pathname} />
+		<Sidebar activePath={$page.url.pathname} profile={userProfile} />
 		<div class="ml-64 flex h-screen flex-1 flex-col overflow-hidden bg-[#f8fafc]">
-			<Header {session} {handleLogout} />
+			<Header {session} profile={userProfile} {handleLogout} />
 			<main class="custom-scrollbar flex-1 overflow-y-auto bg-[#f8fafc] p-6">
 				<div class="mx-auto max-w-[1400px]">
 					{@render children()}

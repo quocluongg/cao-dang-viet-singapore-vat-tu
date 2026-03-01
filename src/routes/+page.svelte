@@ -3,11 +3,13 @@
 	import { fade, fly, scale } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
-	/** @typedef {{ id: number, ten_vat_tu: string, don_vi: string, so_luong: number, don_gia: number, thanh_tien: number, yeu_cau_ky_thuat?: string, ghi_chu?: string, hinh_anh?: string }} VatTu */
+	/** @typedef {{ id: number, ten_vat_tu: string, don_vi: string, so_luong_ton_kho: number, don_gia_tham_khao: number, yeu_cau_ky_thuat?: string, hinh_anh?: string }} VatTu */
 	/** @typedef {{ ten_don_vi: string }} DonVi */
 
-	/** @type {{ data: { vat_tu: VatTu[], don_vi_list: DonVi[] }, form: { success?: boolean, error?: string, message?: string } }} */
+	/** @type {{ data: { vat_tu: VatTu[], don_vi_list: DonVi[], profile?: any }, form: { success?: boolean, error?: string, message?: string } }} */
 	let { data, form } = $props();
+
+	let currentRole = $derived(data.profile?.role || 'giao_vien');
 
 	// State
 	let showModal = $state(false);
@@ -16,15 +18,14 @@
 	let editingItem = $state(null);
 	let toast = $state({ show: false, message: '', type: 'success' });
 	let searchQuery = $state('');
-	/** @type {HTMLFormElement} */
-	let importForm;
+	/** @type {HTMLFormElement | undefined} */
+	let importForm = $state();
 
 	// Derived state for filtering
 	let filteredVatTu = $derived(
 		data.vat_tu.filter(
 			(item) =>
 				item.ten_vat_tu.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				item.ghi_chu?.toLowerCase().includes(searchQuery.toLowerCase()) ||
 				item.don_vi.toLowerCase().includes(searchQuery.toLowerCase())
 		)
 	);
@@ -67,8 +68,13 @@
 	};
 
 	let totalItems = $derived(filteredVatTu.length);
-	let lowStock = $derived(data.vat_tu.filter((v) => v.so_luong < 5).length);
-	let totalValue = $derived(data.vat_tu.reduce((sum, item) => sum + item.thanh_tien, 0));
+	let lowStock = $derived(data.vat_tu.filter((v) => (v.so_luong_ton_kho ?? 0) < 5).length);
+	let totalValue = $derived(
+		data.vat_tu.reduce(
+			(sum, item) => sum + (item.so_luong_ton_kho ?? 0) * (item.don_gia_tham_khao ?? 0),
+			0
+		)
+	);
 </script>
 
 <!-- Toast Notification -->
@@ -103,55 +109,57 @@
 			</p>
 		</div>
 		<div class="flex items-center gap-2">
-			<form
-				bind:this={importForm}
-				action="?/importExcel"
-				method="POST"
-				enctype="multipart/form-data"
-				class="hidden"
-				use:enhance={() => {
-					return async ({ result, update }) => {
-						await update();
-						const el = /** @type {HTMLInputElement | null} */ (
-							document.getElementById('excelDocument')
-						);
-						if (el) el.value = '';
-					};
-				}}
-			>
-				<input
-					type="file"
-					name="excelDocument"
-					id="excelDocument"
-					accept=".xlsx, .xls"
-					onchange={() => importForm.requestSubmit()}
-				/>
-			</form>
+			{#if currentRole !== 'giao_vien'}
+				<form
+					bind:this={importForm}
+					action="?/importExcel"
+					method="POST"
+					enctype="multipart/form-data"
+					class="hidden"
+					use:enhance={() => {
+						return async ({ result, update }) => {
+							await update();
+							const el = /** @type {HTMLInputElement | null} */ (
+								document.getElementById('excelDocument')
+							);
+							if (el) el.value = '';
+						};
+					}}
+				>
+					<input
+						type="file"
+						name="excelDocument"
+						id="excelDocument"
+						accept=".xlsx, .xls"
+						onchange={() => importForm.requestSubmit()}
+					/>
+				</form>
 
-			<button
-				onclick={() => {
-					const el = document.getElementById('excelDocument');
-					if (el) el.click();
-				}}
-				class="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-			>
-				<span class="material-symbols-outlined text-[20px] text-[#1e5ed4]">upload_file</span>
-				<span>Nhập Excel</span>
-			</button>
-			<button
-				onclick={() => (showUnitModal = true)}
-				class="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-			>
-				<span class="material-symbols-outlined text-[20px] text-[#1e5ed4]">category</span>
-				<span>Đơn vị</span>
-			</button>
-			<button
-				onclick={openAddModal}
-				class="flex items-center space-x-2 rounded-lg bg-[#1e5ed4] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-			>
-				<span class="material-symbols-outlined text-[20px]">add_circle</span>
-				<span>Thêm vật tư</span>
-			</button>
+				<button
+					onclick={() => {
+						const el = document.getElementById('excelDocument');
+						if (el) el.click();
+					}}
+					class="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+				>
+					<span class="material-symbols-outlined text-[20px] text-[#1e5ed4]">upload_file</span>
+					<span>Nhập Excel</span>
+				</button>
+				<button
+					onclick={() => (showUnitModal = true)}
+					class="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+				>
+					<span class="material-symbols-outlined text-[20px] text-[#1e5ed4]">category</span>
+					<span>Đơn vị</span>
+				</button>
+				<button
+					onclick={openAddModal}
+					class="flex items-center space-x-2 rounded-lg bg-[#1e5ed4] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+				>
+					<span class="material-symbols-outlined text-[20px]">add_circle</span>
+					<span>Thêm vật tư</span>
+				</button>
+			{/if}
 		</div>
 	</div>
 
@@ -235,7 +243,9 @@
 						<th class="border-b border-slate-100 px-6 py-3 text-center">SỐ LƯỢNG</th>
 						<th class="border-b border-slate-100 px-6 py-3">ĐƠN GIÁ</th>
 						<th class="border-b border-slate-100 px-6 py-3">THÀNH TIỀN</th>
-						<th class="border-b border-slate-100 px-6 py-3 text-center">THAO TÁC</th>
+						{#if currentRole !== 'giao_vien'}
+							<th class="border-b border-slate-100 px-6 py-3 text-center">THAO TÁC</th>
+						{/if}
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-slate-100">
@@ -280,55 +290,57 @@
 								</span>
 							</td>
 							<td class="px-6 py-4 text-center whitespace-nowrap">
-								{#if item.so_luong < 5}
+								{#if (item.so_luong_ton_kho ?? 0) < 5}
 									<span
 										class="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-600 ring-1 ring-rose-500/10 ring-inset"
 									>
 										<span class="mr-1 h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-										{item.so_luong}
+										{item.so_luong_ton_kho ?? 0}
 									</span>
 								{:else}
-									<span class="text-sm font-bold text-slate-700">{item.so_luong}</span>
+									<span class="text-sm font-bold text-slate-700">{item.so_luong_ton_kho ?? 0}</span>
 								{/if}
 							</td>
 							<td class="px-6 py-4 text-sm font-semibold whitespace-nowrap text-slate-600">
-								{formatCurrency(item.don_gia)}
+								{formatCurrency(item.don_gia_tham_khao ?? 0)}
 							</td>
 							<td class="px-6 py-4 text-sm font-bold whitespace-nowrap text-[#1e5ed4]">
-								{formatCurrency(item.thanh_tien)}
+								{formatCurrency((item.so_luong_ton_kho ?? 0) * (item.don_gia_tham_khao ?? 0))}
 							</td>
-							<td class="px-6 py-4 whitespace-nowrap">
-								<div
-									class="flex items-center justify-center space-x-3 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100"
-								>
-									<button
-										onclick={() => openEditModal(item)}
-										class="hover:text-[#1e5ed4]"
-										title="Sửa"
+							{#if currentRole !== 'giao_vien'}
+								<td class="px-6 py-4 whitespace-nowrap">
+									<div
+										class="flex items-center justify-center space-x-3 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100"
 									>
-										<span class="material-symbols-outlined fill-1 text-[20px]">edit_square</span>
-									</button>
-									<form
-										action="?/delete"
-										method="POST"
-										use:enhance={() => {
-											return async ({ update }) => {
-												await update();
-											};
-										}}
-										class="flex inline-block items-center"
-									>
-										<input type="hidden" name="id" value={item.id} />
-										<button class="hover:text-rose-500" title="Xóa">
-											<span class="material-symbols-outlined fill-1 text-[20px]">delete</span>
+										<button
+											onclick={() => openEditModal(item)}
+											class="hover:text-[#1e5ed4]"
+											title="Sửa"
+										>
+											<span class="material-symbols-outlined fill-1 text-[20px]">edit_square</span>
 										</button>
-									</form>
-								</div>
-							</td>
+										<form
+											action="?/delete"
+											method="POST"
+											use:enhance={() => {
+												return async ({ update }) => {
+													await update();
+												};
+											}}
+											class="flex inline-block items-center"
+										>
+											<input type="hidden" name="id" value={item.id} />
+											<button class="hover:text-rose-500" title="Xóa">
+												<span class="material-symbols-outlined fill-1 text-[20px]">delete</span>
+											</button>
+										</form>
+									</div>
+								</td>
+							{/if}
 						</tr>
 					{:else}
 						<tr>
-							<td colspan="6" class="px-6 py-20 text-center">
+							<td colspan={currentRole !== 'giao_vien' ? '6' : '5'} class="px-6 py-20 text-center">
 								<div class="flex flex-col items-center justify-center space-y-3 text-slate-400">
 									<span class="material-symbols-outlined text-5xl opacity-40">inventory_2</span>
 									<p class="text-sm font-medium text-slate-500">Không tìm thấy vật tư nào.</p>
@@ -466,7 +478,7 @@
 							name="so_luong"
 							required
 							min="0"
-							value={editingItem?.so_luong ?? 0}
+							value={editingItem?.so_luong_ton_kho ?? 0}
 							class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-[#1e5ed4] focus:ring-1 focus:ring-[#1e5ed4] focus:outline-none"
 						/>
 					</div>
@@ -483,7 +495,7 @@
 								required
 								min="0"
 								step="0.01"
-								value={editingItem?.don_gia ?? 0}
+								value={editingItem?.don_gia_tham_khao ?? 0}
 								class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-10 text-sm font-semibold text-[#1e5ed4] focus:border-[#1e5ed4] focus:ring-1 focus:ring-[#1e5ed4] focus:outline-none"
 							/>
 							<div
