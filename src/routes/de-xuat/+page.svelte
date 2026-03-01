@@ -1,19 +1,20 @@
 <script>
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import { fade, fly, slide, scale } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import * as xlsx from 'xlsx';
 
-	/** @typedef {{ id: number, ten_vat_tu: string, don_vi: string, so_luong: number, don_gia: number, yeu_cau_ky_thuat: string }} VatTu */
+	/** @typedef {{ id: number, ten_vat_tu: string, don_vi: string, so_luong_ton_kho: number, don_gia_tham_khao: number, yeu_cau_ky_thuat: string }} VatTu */
 	/** @typedef {{ id: number, ten_khoa: string }} Khoa */
 	/** @typedef {{ id: number, ten_nganh: string }} Nganh */
 	/** @typedef {{ id: number, ten_he: string }} HeDaoTao */
 	/** @typedef {{ id: number, ten_mon_hoc: string, ma_mon_hoc: string }} MonHoc */
-	/** @typedef {{ id: string, ho_ten: string }} GiaoVien */
-	/** @typedef {{ id: number, phieu_id: string, vat_tu_id: number, so_luong_de_xuat: number, so_luong_da_cap: number, mon_hoc_id: number, khoa_id: number, nganh_id: number, he_id: number, vat_tu: VatTu, mon_hoc: MonHoc, khoa: Khoa, nganh: Nganh, he_dao_tao: HeDaoTao }} ChiTietDeXuat */
-	/** @typedef {{ id: string, giao_vien_id: string, ngay_de_xuat: string, ly_do_de_xuat: string, trang_thai: string, giao_vien: GiaoVien, chi_tiet_de_xuat: ChiTietDeXuat[] }} PhieuDeXuat */
+	/** @typedef {{ id: string, ho_ten: string, role?: string }} Profile */
+	/** @typedef {{ id: number, phieu_id: string, vat_tu_id: number, so_luong_de_xuat: number, so_luong_thuc_xuat: number, so_luong_da_cap?: number, mon_hoc_id: number, khoa_id?: number, nganh_id?: number, he_id?: number, vat_tu: VatTu, mon_hoc: MonHoc, khoa?: Khoa, nganh?: Nganh, he_dao_tao?: HeDaoTao }} ChiTietDeXuat */
+	/** @typedef {{ id: string, nguoi_de_xuat_id: string, giao_vien_id?: string, ngay_de_xuat: string, ly_do_de_xuat: string, trang_thai: string, profiles?: Profile, giao_vien?: Profile, chi_tiet_de_xuat: ChiTietDeXuat[] }} PhieuDeXuat */
 
-	/** @type {{ data: { phieu_de_xuat: PhieuDeXuat[], giao_vien_list: GiaoVien[], vat_tu_list: VatTu[], mon_hoc_list: MonHoc[], khoa_list: Khoa[], nganh_list: Nganh[], he_dao_tao_list: HeDaoTao[] }, form: { success?: boolean, error?: string, message?: string } }} */
+	/** @type {{ data: { phieu_de_xuat: PhieuDeXuat[], giao_vien_list: Profile[], vat_tu_list: VatTu[], mon_hoc_list: MonHoc[], khoa_list: Khoa[], nganh_list: Nganh[], he_dao_tao_list: HeDaoTao[] }, form: { success?: boolean, error?: string, message?: string } }} */
 	let { data, form } = $props();
 
 	// State
@@ -21,10 +22,11 @@
 	let viewMode = $state(false); // If true, modal is readonly
 	let toast = $state({ show: false, message: '', type: 'success' });
 	let searchQuery = $state('');
+	let filterTrangThai = $state('all');
 
 	let giaoVienId = $state('');
 	let lyDoDeXuat = $state('');
-	let trangThai = $state('cho_duyet');
+	let trangThai = $state('nhap_thanh');
 
 	/** @type {{ id: number, vat_tu_id: string, so_luong_de_xuat: number, mon_hoc_id: string, khoa_id: string, nganh_id: string, he_id: string }[]} */
 	let chiTietList = $state([]);
@@ -61,13 +63,15 @@
 	}
 
 	let filteredPhieu = $derived(
-		data.phieu_de_xuat.filter(
-			(item) =>
-				item.giao_vien?.ho_ten.toLowerCase().includes(searchQuery.toLowerCase()) ||
+		data.phieu_de_xuat.filter((item) => {
+			const matchSearch =
+				item.profiles?.ho_ten.toLowerCase().includes(searchQuery.toLowerCase()) ||
 				(item.ly_do_de_xuat &&
 					item.ly_do_de_xuat.toLowerCase().includes(searchQuery.toLowerCase())) ||
-				item.trang_thai.toLowerCase().includes(searchQuery.toLowerCase())
-		)
+				item.trang_thai.toLowerCase().includes(searchQuery.toLowerCase());
+			const matchFilter = filterTrangThai === 'all' || item.trang_thai === filterTrangThai;
+			return matchSearch && matchFilter;
+		})
 	);
 
 	function showToast(
@@ -87,22 +91,129 @@
 	});
 
 	function getTrangThaiBadge(/** @type {string} */ st) {
-		if (st === 'cho_duyet')
+		if (st === 'nhap_thanh')
 			return {
-				text: 'Chờ duyệt',
+				text: 'Phiếu Nháp',
+				icon: 'edit_note',
+				classes: 'bg-slate-100 text-slate-600 border border-slate-200'
+			};
+		if (st === 'cho_khoa_duyet')
+			return {
+				text: 'Chờ Khoa Duyệt',
+				icon: 'pending_actions',
 				classes: 'bg-amber-100 text-amber-700 border border-amber-200'
 			};
-		if (st === 'da_duyet')
+		if (st === 'cho_mua_sam')
 			return {
-				text: 'Đã duyệt',
-				classes: 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+				text: 'Mua Sắm Vật Tư',
+				icon: 'shopping_cart',
+				classes: 'bg-indigo-100 text-indigo-700 border border-indigo-200'
 			};
-		if (st === 'tu_choi')
+		if (st === 'san_sang_cap_phat')
 			return {
-				text: 'Từ chối',
-				classes: 'bg-rose-100 text-rose-700 border border-rose-200'
+				text: 'Sẵn Sàng Cấp Phát',
+				icon: 'package_2',
+				classes: 'bg-purple-100 text-purple-700 border border-purple-200'
 			};
-		return { text: st, classes: 'bg-slate-100 text-slate-700 border border-slate-200' };
+		if (st === 'da_hoan_thanh' || st === 'da_tu_choi')
+			return {
+				text: st === 'da_hoan_thanh' ? 'Đã Hoàn Thành' : 'Đã Từ Chối',
+				icon: st === 'da_hoan_thanh' ? 'task_alt' : 'cancel',
+				classes:
+					st === 'da_hoan_thanh'
+						? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+						: 'bg-rose-100 text-rose-700 border border-rose-200'
+			};
+		return {
+			text: st,
+			icon: 'help',
+			classes: 'bg-slate-100 text-slate-700 border border-slate-200'
+		};
+	}
+
+	const kanbanColumns = [
+		{
+			id: 'nhap_thanh',
+			name: 'Phiếu Nháp',
+			icon: 'edit_note',
+			bg: 'bg-slate-100',
+			text: 'text-slate-600'
+		},
+		{
+			id: 'cho_khoa_duyet',
+			name: 'Chờ Khoa Duyệt',
+			icon: 'pending_actions',
+			bg: 'bg-amber-100',
+			text: 'text-amber-600'
+		},
+		{
+			id: 'cho_mua_sam',
+			name: 'Mua Sắm Vật Tư',
+			icon: 'shopping_cart',
+			bg: 'bg-indigo-100',
+			text: 'text-indigo-600'
+		},
+		{
+			id: 'san_sang_cap_phat',
+			name: 'Sẵn Sàng Cấp Phát',
+			icon: 'package_2',
+			bg: 'bg-purple-100',
+			text: 'text-purple-600'
+		},
+		{
+			id: 'da_hoan_thanh',
+			name: 'Đã Hoàn Thành',
+			icon: 'task_alt',
+			bg: 'bg-emerald-100',
+			text: 'text-emerald-600'
+		}
+	];
+
+	// Drag & Drop State
+	let draggedItemId = $state(null);
+	let dropTargetId = $state(null);
+
+	function handleDragStart(e, id) {
+		draggedItemId = id;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', id);
+		}
+	}
+
+	function handleDragOver(e, colId) {
+		e.preventDefault();
+		if (draggedItemId) {
+			dropTargetId = colId;
+		}
+	}
+
+	function handleDragLeave() {
+		dropTargetId = null;
+	}
+
+	async function handleDrop(e, targetStatus) {
+		e.preventDefault();
+		dropTargetId = null;
+
+		const id = draggedItemId || e.dataTransfer?.getData('text/plain');
+		if (id) {
+			draggedItemId = null;
+			const formData = new FormData();
+			formData.append('id', id);
+			formData.append('trang_thai', targetStatus);
+
+			// Gửi API ngầm để cập nhật trạng thái phiếu
+			const response = await fetch('?/updateStatus', {
+				method: 'POST',
+				body: formData
+			});
+
+			if (response.ok) {
+				// Tải lại dữ liệu trang ngay lập tức để cập nhật UI
+				await invalidateAll();
+			}
+		}
 	}
 
 	function openAddModal() {
@@ -110,7 +221,7 @@
 		viewMode = false;
 		giaoVienId = '';
 		lyDoDeXuat = '';
-		trangThai = 'cho_duyet';
+		trangThai = 'nhap_thanh';
 		openDropdownId = null;
 		chiTietList = [];
 		addNewChiTiet();
@@ -119,10 +230,10 @@
 
 	function openEditModal(/** @type {PhieuDeXuat} */ item, /** @type {boolean} */ readonly = false) {
 		editingItem = item;
-		viewMode = readonly || item.trang_thai === 'da_duyet';
-		giaoVienId = item.giao_vien_id || '';
+		viewMode = readonly || item.trang_thai === 'da_hoan_thanh' || item.trang_thai === 'da_tu_choi';
+		giaoVienId = item.nguoi_de_xuat_id || '';
 		lyDoDeXuat = item.ly_do_de_xuat || '';
-		trangThai = item.trang_thai || 'cho_duyet';
+		trangThai = item.trang_thai || 'nhap_thanh';
 
 		chiTietList = item.chi_tiet_de_xuat.map((ct) => ({
 			id: Math.random(),
@@ -211,7 +322,7 @@
 	</div>
 
 	<!-- Stats Cards -->
-	<div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+	<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
 		<div
 			class="flex items-center space-x-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
 		>
@@ -219,8 +330,23 @@
 				<span class="material-symbols-outlined text-2xl">receipt_long</span>
 			</div>
 			<div>
-				<p class="text-xs font-semibold tracking-wider text-slate-500 uppercase">TỔNG ĐỀ XUẤT</p>
-				<p class="text-xl font-bold text-slate-900">{filteredPhieu.length}</p>
+				<p class="text-xs font-semibold tracking-wider text-slate-500 uppercase">Tổng đề xuất</p>
+				<p class="text-xl font-bold text-slate-900">{data.phieu_de_xuat.length}</p>
+			</div>
+		</div>
+		<div
+			class="flex items-center space-x-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+		>
+			<div
+				class="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-600"
+			>
+				<span class="material-symbols-outlined text-2xl">edit_note</span>
+			</div>
+			<div>
+				<p class="text-xs font-semibold tracking-wider text-slate-500 uppercase">Bản nháp</p>
+				<p class="text-xl font-bold text-slate-700">
+					{data.phieu_de_xuat.filter((p) => p.trang_thai === 'nhap_thanh').length}
+				</p>
 			</div>
 		</div>
 		<div
@@ -232,9 +358,9 @@
 				<span class="material-symbols-outlined text-2xl">pending_actions</span>
 			</div>
 			<div>
-				<p class="text-xs font-semibold tracking-wider text-slate-500 uppercase">CHỜ DUYỆT</p>
+				<p class="text-xs font-semibold tracking-wider text-slate-500 uppercase">Chờ duyệt</p>
 				<p class="text-xl font-bold text-amber-600">
-					{data.phieu_de_xuat.filter((p) => p.trang_thai === 'cho_duyet').length}
+					{data.phieu_de_xuat.filter((p) => p.trang_thai === 'cho_khoa_duyet').length}
 				</p>
 			</div>
 		</div>
@@ -247,143 +373,247 @@
 				<span class="material-symbols-outlined text-2xl">task_alt</span>
 			</div>
 			<div>
-				<p class="text-xs font-semibold tracking-wider text-slate-500 uppercase">ĐÃ DUYỆT</p>
+				<p class="text-xs font-semibold tracking-wider text-slate-500 uppercase">Đã duyệt</p>
 				<p class="text-xl font-bold text-emerald-600">
-					{data.phieu_de_xuat.filter((p) => p.trang_thai === 'da_duyet').length}
+					{data.phieu_de_xuat.filter(
+						(p) => p.trang_thai === 'da_hoan_thanh' || p.trang_thai === 'da_tu_choi'
+					).length}
 				</p>
 			</div>
 		</div>
 	</div>
 
-	<!-- Search & List Container -->
+	<!-- Search & Filter Container -->
 	<div class="space-y-4">
-		<!-- Search -->
-		<div class="relative w-full max-w-md">
-			<span
-				class="material-symbols-outlined absolute top-1/2 left-3 -translate-y-1/2 text-lg text-slate-400"
-				>search</span
-			>
-			<input
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Tìm kiếm phiếu đề xuất..."
-				class="w-full rounded-lg border border-slate-200 bg-white py-2 pr-4 pl-10 text-sm focus:border-[#1e5ed4] focus:ring-1 focus:ring-[#1e5ed4]"
-			/>
+		<!-- Search + Filter -->
+		<div class="flex flex-wrap items-center gap-3">
+			<div class="relative w-full max-w-md">
+				<span
+					class="material-symbols-outlined absolute top-1/2 left-3 -translate-y-1/2 text-lg text-slate-400"
+					>search</span
+				>
+				<input
+					type="text"
+					bind:value={searchQuery}
+					placeholder="Tìm kiếm phiếu đề xuất..."
+					class="w-full rounded-lg border border-slate-200 bg-white py-2 pr-4 pl-10 text-sm focus:border-[#1e5ed4] focus:ring-1 focus:ring-[#1e5ed4]"
+				/>
+			</div>
+			<!-- Optional user filter could go here -->
 		</div>
 
-		<!-- Grid items -->
-		<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-			{#each filteredPhieu as phieu (phieu.id)}
-				{@const badge = getTrangThaiBadge(phieu.trang_thai)}
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- Kanban Board Container -->
+		<div
+			class="flex h-[calc(100vh-280px)] w-full flex-nowrap gap-6 overflow-x-auto overflow-y-hidden pb-6"
+		>
+			{#each kanbanColumns as col}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					onclick={() => openEditModal(phieu, true)}
-					class="group cursor-pointer rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-[#1e5ed4] hover:shadow-md"
+					ondragover={(e) => handleDragOver(e, col.id)}
+					ondragleave={handleDragLeave}
+					ondrop={(e) => handleDrop(e, col.id)}
+					class="flex w-[320px] shrink-0 flex-col rounded-xl p-4 shadow-inner ring-1 transition-colors {dropTargetId ===
+					col.id
+						? 'scale-[1.01] bg-[#1e5ed4]/10 ring-[#1e5ed4]/40'
+						: 'bg-slate-50/70 ring-slate-200/50'}"
 				>
-					<div class="mb-3 flex items-start justify-between">
-						<div>
-							<span
-								class="inline-flex rounded px-2 py-0.5 text-[11px] font-bold tracking-wider uppercase {badge.classes}"
+					<!-- Column Header -->
+					<div class="mb-4 flex items-center justify-between">
+						<div class="flex items-center gap-2.5">
+							<div
+								class={`flex h-8 w-8 items-center justify-center rounded-lg ${col.bg} ${col.text} ring-1 ring-black/5 ring-inset`}
 							>
-								{badge.text}
-							</span>
+								<span class="material-symbols-outlined text-[18px]">{col.icon}</span>
+							</div>
+							<h3 class="text-sm font-bold tracking-tight text-slate-800">{col.name}</h3>
 						</div>
-						<div class="text-xs font-medium text-slate-500">
-							{new Date(phieu.ngay_de_xuat).toLocaleDateString('vi-VN')}
-						</div>
-					</div>
-
-					<h3
-						class="mb-3 line-clamp-2 text-sm font-bold text-slate-900 transition-colors group-hover:text-[#1e5ed4]"
-					>
-						{phieu.ly_do_de_xuat || 'Không có lý do'}
-					</h3>
-
-					<div class="mb-4 flex items-center gap-2">
 						<div
-							class="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+							class="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-white px-2 text-xs font-bold text-slate-500 shadow-sm ring-1 ring-slate-200"
 						>
-							<span class="material-symbols-outlined text-sm">person</span>
-						</div>
-						<div class="text-xs font-medium text-slate-700">
-							{phieu.giao_vien?.ho_ten || 'N/A'}
+							{filteredPhieu.filter((p) =>
+								col.id === 'da_hoan_thanh'
+									? p.trang_thai === 'da_hoan_thanh' || p.trang_thai === 'da_tu_choi'
+									: p.trang_thai === col.id
+							).length}
 						</div>
 					</div>
 
-					<!-- Danh sách vật tư thu gọn -->
-					<div class="rounded-lg bg-slate-50 p-3">
-						<div class="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">
-							Danh sách vật tư ({phieu.chi_tiet_de_xuat.length})
-						</div>
-						{#if phieu.chi_tiet_de_xuat.length > 0}
-							<div class="space-y-1.5">
-								{#each phieu.chi_tiet_de_xuat.slice(0, 3) as ct}
-									<div class="flex items-center justify-between text-xs">
-										<div class="truncate pr-2 font-medium text-slate-700">
-											{ct.vat_tu?.ten_vat_tu || 'N/A'}
-										</div>
-										<div class="flex-shrink-0 font-bold text-[#1e5ed4]">
-											x{ct.so_luong_de_xuat}
-										</div>
+					<!-- Column Body -->
+					<div
+						class="custom-scrollbar flex flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pr-1"
+					>
+						{#each filteredPhieu.filter( (p) => (col.id === 'da_hoan_thanh' ? p.trang_thai === 'da_hoan_thanh' || p.trang_thai === 'da_tu_choi' : p.trang_thai === col.id) ) as phieu (phieu.id)}
+							{@const shortId = phieu.id.split('-')[0].toUpperCase()}
+							{@const monHoc =
+								phieu.chi_tiet_de_xuat[0]?.mon_hoc?.ten_mon_hoc || 'Phòng ban / Dự án chung'}
+							{@const priority = phieu.ly_do_de_xuat?.toLowerCase().includes('gấp')
+								? 'Urgent'
+								: 'Normal'}
+							{@const pColor = priority === 'Urgent' ? 'rose' : 'slate'}
+							{@const tongChiPhi = phieu.chi_tiet_de_xuat.reduce(
+								(sum, ct) => sum + ct.so_luong_de_xuat * (ct.vat_tu?.don_gia_tham_khao || 0),
+								0
+							)}
+
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								draggable="true"
+								ondragstart={(e) => handleDragStart(e, phieu.id)}
+								ondragend={() => (draggedItemId = null)}
+								onclick={() => openEditModal(phieu, true)}
+								class="group relative cursor-pointer break-inside-avoid rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-[#1e5ed4] hover:shadow-md {draggedItemId ===
+								phieu.id
+									? 'opacity-50 blur-[1px]'
+									: ''}"
+							>
+								<!-- Check & Package icons for intermediate states -->
+								{#if col.id === 'cho_duyet'}
+									<div
+										class="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-white shadow"
+										title="Waiting for Dean"
+									>
+										<span class="material-symbols-outlined text-[13px]">check</span>
 									</div>
-								{/each}
-								{#if phieu.chi_tiet_de_xuat.length > 3}
-									<div class="pt-1 text-center text-xs text-slate-400 italic">
-										+ {phieu.chi_tiet_de_xuat.length - 3} vật tư khác...
+								{:else if col.id === 'san_sang'}
+									<div
+										class="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-purple-500 text-white shadow"
+										title="Ready to Issue"
+									>
+										<span class="material-symbols-outlined text-[13px]">package_2</span>
 									</div>
 								{/if}
+
+								<!-- Card Header: ID & Teacher -->
+								<div class="mb-3">
+									<div class="flex items-start justify-between">
+										<span class="text-[11px] font-bold tracking-wider text-[#1e5ed4]"
+											>REQ-{new Date(phieu.ngay_de_xuat).getFullYear()}-{shortId}</span
+										>
+										<span
+											class={`rounded px-1.5 py-0.5 text-[9px] font-black tracking-wider uppercase text-${pColor}-600 bg-${pColor}-50 border border-${pColor}-200/50`}
+										>
+											{priority}
+										</span>
+									</div>
+									<div class="mt-1 flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+										<span class="material-symbols-outlined text-[14px] text-slate-400">person</span>
+										<span class="truncate">{phieu.profiles?.ho_ten || 'N/A'}</span>
+									</div>
+								</div>
+
+								<!-- Card Body: Subject, Materials, Cost -->
+								<div
+									class="mb-4 space-y-2 rounded-lg bg-slate-50/50 p-2.5 ring-1 ring-slate-100 ring-inset"
+								>
+									<div class="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+										<span class="material-symbols-outlined text-[14px] text-indigo-400">book</span>
+										<span class="truncate">{monHoc}</span>
+									</div>
+
+									<div class="pl-5">
+										{#each phieu.chi_tiet_de_xuat.slice(0, 2) as ct}
+											<div class="flex items-center justify-between text-[11px] text-slate-500">
+												<span class="truncate pr-2">• {ct.vat_tu?.ten_vat_tu || 'Vật tư'}</span>
+												<span class="shrink-0 font-medium">x{ct.so_luong_de_xuat}</span>
+											</div>
+										{/each}
+										{#if phieu.chi_tiet_de_xuat.length > 2}
+											<div class="mt-0.5 text-[10px] text-slate-400 opacity-80">
+												+ {phieu.chi_tiet_de_xuat.length - 2} items khác...
+											</div>
+										{/if}
+									</div>
+
+									<div
+										class="mt-2 flex items-center justify-between border-t border-slate-200/60 pt-2"
+									>
+										<span class="text-[10px] font-semibold tracking-wider text-slate-500 uppercase"
+											>Est. Cost</span
+										>
+										<span class="text-xs font-bold text-emerald-600">
+											{new Intl.NumberFormat('vi-VN', {
+												style: 'currency',
+												currency: 'VND'
+											}).format(tongChiPhi)}
+										</span>
+									</div>
+								</div>
+
+								<!-- Card Footer: Flow Actions -->
+								<div
+									class="flex shrink-0 gap-2 overflow-hidden border-t border-slate-100 pt-3 opacity-90 transition-opacity group-hover:opacity-100"
+								>
+									{#if col.id === 'nhap_thanh'}
+										<form action="?/updateStatus" method="POST" use:enhance class="flex-1">
+											<input type="hidden" name="id" value={phieu.id} />
+											<input type="hidden" name="trang_thai" value="cho_khoa_duyet" />
+											<button
+												onclick={(e) => e.stopPropagation()}
+												class="flex w-full items-center justify-center gap-1 rounded-md bg-white py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm ring-1 ring-slate-300 ring-inset hover:bg-slate-50"
+											>
+												<span class="material-symbols-outlined text-[14px]">send</span> Gửi duyệt
+											</button>
+										</form>
+									{:else if col.id === 'cho_khoa_duyet'}
+										<!-- Review Manager -->
+										<form action="?/updateStatus" method="POST" use:enhance class="flex-1">
+											<input type="hidden" name="id" value={phieu.id} />
+											<input type="hidden" name="trang_thai" value="cho_mua_sam" />
+											<button
+												onclick={(e) => e.stopPropagation()}
+												class="flex w-full items-center justify-center gap-1 rounded-md bg-amber-500 py-1.5 text-[11px] font-bold text-white shadow-sm hover:bg-amber-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
+											>
+												<span class="material-symbols-outlined text-[14px]">fact_check</span> Duyệt
+											</button>
+										</form>
+									{:else if col.id === 'cho_mua_sam'}
+										<!-- Purchase -> Ready -->
+										<form action="?/updateStatus" method="POST" use:enhance class="flex-1">
+											<input type="hidden" name="id" value={phieu.id} />
+											<input type="hidden" name="trang_thai" value="san_sang_cap_phat" />
+											<button
+												onclick={(e) => e.stopPropagation()}
+												class="flex w-full items-center justify-center gap-1 rounded-md bg-indigo-500 py-1.5 text-[11px] font-bold text-white shadow-sm hover:bg-indigo-600"
+											>
+												<span class="material-symbols-outlined text-[14px]">inventory_2</span> Đã mua
+											</button>
+										</form>
+									{:else if col.id === 'san_sang_cap_phat'}
+										<!-- Issue Warehouse Staff -->
+										<form action="?/updateStatus" method="POST" use:enhance class="flex-1">
+											<input type="hidden" name="id" value={phieu.id} />
+											<input type="hidden" name="trang_thai" value="da_hoan_thanh" />
+											<button
+												onclick={(e) => e.stopPropagation()}
+												class="flex w-full items-center justify-center gap-1 rounded-md bg-purple-600 py-1.5 text-[11px] font-bold text-white shadow-sm hover:bg-purple-700"
+											>
+												<span class="material-symbols-outlined text-[14px]">local_shipping</span> Cấp
+												phát
+											</button>
+										</form>
+									{/if}
+
+									<button
+										onclick={(e) => {
+											e.stopPropagation();
+											openEditModal(phieu, false);
+										}}
+										title="Sửa/Chi tiết"
+										class="flex h-7 w-7 items-center justify-center rounded-md bg-white text-slate-500 shadow-sm ring-1 ring-slate-300 ring-inset hover:bg-slate-50 hover:text-slate-700"
+									>
+										<span class="material-symbols-outlined text-[16px]">visibility</span>
+									</button>
+								</div>
 							</div>
 						{:else}
-							<div class="text-xs text-slate-400 italic">Không có vật tư nào.</div>
-						{/if}
-					</div>
-
-					<!-- Thao tác ẩn (hiện khi hover) -->
-					<div
-						class="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-3 opacity-0 transition-opacity group-hover:opacity-100"
-					>
-						<button
-							onclick={(e) => {
-								e.stopPropagation();
-								openEditModal(phieu, false);
-							}}
-							class="flex items-center gap-1 rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200"
-						>
-							{#if phieu.trang_thai === 'da_duyet'}
-								<span class="material-symbols-outlined text-[14px]">visibility</span> Chi tiết
-							{:else}
-								<span class="material-symbols-outlined text-[14px]">edit</span> Sửa
-							{/if}
-						</button>
-
-						{#if phieu.trang_thai !== 'da_duyet'}
-							<form
-								action="?/delete"
-								method="POST"
-								use:enhance={() => {
-									return async ({ update }) => {
-										await update();
-									};
-								}}
-								class="inline-block"
+							<div
+								class="flex flex-1 flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200/50 p-6 text-center"
 							>
-								<input type="hidden" name="id" value={phieu.id} />
-								<button
-									onclick={(e) => e.stopPropagation()}
-									class="flex items-center gap-1 rounded bg-rose-50 px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-100"
-								>
-									<span class="material-symbols-outlined text-[14px]">delete</span> Xóa
-								</button>
-							</form>
-						{/if}
-					</div>
-				</div>
-			{:else}
-				<div class="col-span-full py-20 text-center">
-					<div class="flex flex-col items-center justify-center space-y-3 text-slate-400">
-						<span class="material-symbols-outlined text-5xl opacity-40">receipt_long</span>
-						<p class="text-sm font-medium text-slate-500">Chưa có phiếu đề xuất nào.</p>
+								<span class="material-symbols-outlined mb-2 text-3xl text-slate-300">inbox</span>
+								<span class="text-xs font-semibold text-slate-400">Khu vực trống</span>
+							</div>
+						{/each}
 					</div>
 				</div>
 			{/each}
@@ -493,9 +723,12 @@
 								disabled={!editingItem || viewMode}
 								class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold focus:border-[#1e5ed4] focus:ring-1 focus:ring-[#1e5ed4] focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
 							>
-								<option value="cho_duyet">⚠️ Chờ duyệt</option>
-								<option value="da_duyet">✅ Đã duyệt</option>
-								<option value="tu_choi">❌ Từ chối</option>
+								<option value="nhap_thanh">📝 Nháp</option>
+								<option value="cho_khoa_duyet">⚠️ Chờ Duyệt Khoa</option>
+								<option value="cho_mua_sam">🛒 Mua Sắm Vật Tư</option>
+								<option value="san_sang_cap_phat">📦 Sẵn Sàng Cấp Phát</option>
+								<option value="da_hoan_thanh">✅ Đã Hoàn Thành</option>
+								<option value="da_tu_choi">❌ Từ Chối</option>
 							</select>
 							{#if !editingItem}
 								<input type="hidden" name="trang_thai" value={trangThai} />

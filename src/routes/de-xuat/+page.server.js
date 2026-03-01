@@ -2,36 +2,41 @@ import { supabase } from "$lib/supabaseClient";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load() {
-    const { data: phieu_de_xuat, error } = await supabase
+    const { data: phieuData, error } = await supabase
         .from("phieu_de_xuat")
         .select(`
             *,
-            giao_vien ( id, ho_ten ),
             chi_tiet_de_xuat (
                 id,
                 so_luong_de_xuat,
-                so_luong_da_cap,
+                so_luong_thuc_xuat,
                 vat_tu ( id, ten_vat_tu, don_vi, yeu_cau_ky_thuat ),
-                mon_hoc ( id, ten_mon_hoc, ma_mon_hoc ),
-                khoa ( id, ten_khoa ),
-                nganh ( id, ten_nganh ),
-                he_dao_tao ( id, ten_he )
+                mon_hoc ( id, ten_mon_hoc, ma_mon_hoc )
             )
         `)
         .order("ngay_de_xuat", { ascending: false });
 
     // Load lookups
     const [gv, vt, mh, kh, ng, he] = await Promise.all([
-        supabase.from("giao_vien").select("id, ho_ten").order("ho_ten", { ascending: true }),
-        supabase.from("vat_tu").select("id, ten_vat_tu, don_vi, so_luong, don_gia, yeu_cau_ky_thuat").order("ten_vat_tu", { ascending: true }),
+        supabase.from("giao_vien").select("id, ho_ten, ma_so_gv").order("ho_ten", { ascending: true }),
+        supabase.from("vat_tu").select("id, ten_vat_tu, don_vi, so_luong_ton_kho, don_gia_tham_khao, yeu_cau_ky_thuat").order("ten_vat_tu", { ascending: true }),
         supabase.from("mon_hoc").select("id, ten_mon_hoc, ma_mon_hoc").order("ten_mon_hoc", { ascending: true }),
         supabase.from("khoa").select("id, ten_khoa").order("ten_khoa", { ascending: true }),
         supabase.from("nganh").select("id, ten_nganh").order("ten_nganh", { ascending: true }),
         supabase.from("he_dao_tao").select("id, ten_he").order("ten_he", { ascending: true })
     ]);
 
+    // Map profiles manually to avoid schema cache relationship issues
+    const phieu_de_xuat = phieuData?.map(p => {
+        const teacher = gv.data?.find(g => g.id === p.nguoi_de_xuat_id);
+        return {
+            ...p,
+            profiles: { ho_ten: teacher?.ho_ten || 'N/A' }
+        };
+    }) || [];
+
     return {
-        phieu_de_xuat: phieu_de_xuat ?? [],
+        phieu_de_xuat,
         giao_vien_list: gv.data ?? [],
         vat_tu_list: vt.data ?? [],
         mon_hoc_list: mh.data ?? [],
@@ -54,7 +59,7 @@ export const actions = {
         }
 
         const { data: newPhieu, error: dbError } = await supabase.from('phieu_de_xuat').insert([
-            { giao_vien_id, ly_do_de_xuat, trang_thai: 'cho_duyet' }
+            { nguoi_de_xuat_id: giao_vien_id, ly_do_de_xuat, trang_thai: 'nhap_thanh' }
         ]).select().single();
 
         if (dbError) {
@@ -95,7 +100,7 @@ export const actions = {
         }
 
         const { error } = await supabase.from('phieu_de_xuat').update({
-            giao_vien_id,
+            nguoi_de_xuat_id: giao_vien_id,
             ly_do_de_xuat,
             trang_thai
         }).eq('id', id);
@@ -137,5 +142,56 @@ export const actions = {
 
         if (error) return { success: false, error: error.message };
         return { success: true, message: 'Xóa phiếu đề xuất thành công!' };
+    },
+
+    guiDuyet: async ({ request }) => {
+        const formData = await request.formData();
+        const id = formData.get('id')?.toString();
+
+        if (!id) return { success: false, error: 'Thiếu ID phiếu' };
+
+        // Chỉ cho phép gửi duyệt khi đang ở trạng thái nhap_thanh
+        const { data: phieu } = await supabase
+            .from('phieu_de_xuat')
+            .select('trang_thai')
+            .eq('id', id)
+            .single();
+
+        if (!phieu || phieu.trang_thai !== 'nhap_thanh') {
+            return { success: false, error: 'Chỉ có thể gửi duyệt phiếu đang ở trạng thái nháp' };
+        }
+
+        const { error } = await supabase
+            .from('phieu_de_xuat')
+            .update({ trang_thai: 'cho_khoa_duyet' })  // ✅ Đúng enum DB
+            .eq('id', id);
+
+        if (error) return { success: false, error: error.message };
+        return { success: true, message: 'Đã gửi phiếu đề xuất chờ duyệt thành công!' };
+    },
+
+    updateStatus: async ({ request }) => {
+        const formData = await request.formData();
+        const id = formData.get('id')?.toString();
+        const trang_thai = formData.get('trang_thai')?.toString();
+
+        if (!id || !trang_thai) return { success: false, error: 'Thiếu thông tin' };
+
+        // Validate enum values khớp với database
+        const validStatuses = ['nhap_thanh', 'cho_khoa_duyet', 'cho_mua_sam', 'san_sang_cap_phat', 'da_hoan_thanh', 'da_tu_choi'];
+        if (!validStatuses.includes(trang_thai)) {
+            return { success: false, error: `Trạng thái không hợp lệ: ${trang_thai}` };
+        }
+
+        const { error } = await supabase
+            .from('phieu_de_xuat')
+            .update({ trang_thai })
+            .eq('id', id);
+
+        if (error) {
+            console.error('[updateStatus] error:', error.message, '| trang_thai =', trang_thai);
+            return { success: false, error: error.message };
+        }
+        return { success: true, message: 'Đã cập nhật trạng thái phiếu thành công!' };
     }
 };

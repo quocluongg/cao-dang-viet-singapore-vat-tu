@@ -26,13 +26,11 @@ export const actions = {
         const formData = await request.formData();
         const ten_vat_tu = formData.get('ten_vat_tu')?.toString();
         const don_vi = formData.get('don_vi')?.toString();
-        const so_luong = parseInt(formData.get('so_luong')?.toString() || '0');
-        const don_gia = parseFloat(formData.get('don_gia')?.toString() || '0');
-        const ghi_chu = formData.get('ghi_chu')?.toString();
+        const so_luong_ton_kho = parseInt(formData.get('so_luong')?.toString() || '0');
+        const don_gia_tham_khao = parseFloat(formData.get('don_gia')?.toString() || '0');
         const yeu_cau_ky_thuat = formData.get('yeu_cau_ky_thuat')?.toString();
         const hinh_anh_file = /** @type {File} */ (formData.get('hinh_anh_file'));
         let hinh_anh = formData.get('hinh_anh')?.toString() || '';
-        const thanh_tien = so_luong * don_gia;
 
         if (hinh_anh_file && hinh_anh_file.size > 0 && hinh_anh_file.name !== 'undefined') {
             const fileExt = hinh_anh_file.name.split('.').pop();
@@ -57,18 +55,14 @@ export const actions = {
             hinh_anh = publicUrl;
         }
 
-        const { error } = await supabase.from('vat_tu').insert([
-            {
-                ten_vat_tu,
-                don_vi,
-                so_luong,
-                don_gia,
-                ghi_chu,
-                yeu_cau_ky_thuat,
-                thanh_tien,
-                hinh_anh
-            }
-        ]);
+        const { error } = await supabase.from('vat_tu').insert([{
+            ten_vat_tu,
+            don_vi,
+            so_luong_ton_kho,
+            don_gia_tham_khao,
+            yeu_cau_ky_thuat,
+            hinh_anh: hinh_anh || null
+        }]);
 
         if (error) return { success: false, error: error.message };
         return { success: true, message: 'Thêm vật tư thành công!' };
@@ -79,13 +73,11 @@ export const actions = {
         const id = formData.get('id')?.toString();
         const ten_vat_tu = formData.get('ten_vat_tu')?.toString();
         const don_vi = formData.get('don_vi')?.toString();
-        const so_luong = parseInt(formData.get('so_luong')?.toString() || '0');
-        const don_gia = parseFloat(formData.get('don_gia')?.toString() || '0');
-        const ghi_chu = formData.get('ghi_chu')?.toString();
+        const so_luong_ton_kho = parseInt(formData.get('so_luong')?.toString() || '0');
+        const don_gia_tham_khao = parseFloat(formData.get('don_gia')?.toString() || '0');
         const yeu_cau_ky_thuat = formData.get('yeu_cau_ky_thuat')?.toString();
         const hinh_anh_file = /** @type {File} */ (formData.get('hinh_anh_file'));
         let hinh_anh = formData.get('hinh_anh')?.toString() || '';
-        const thanh_tien = so_luong * don_gia;
 
         if (hinh_anh_file && hinh_anh_file.size > 0 && hinh_anh_file.name !== 'undefined') {
             const fileExt = hinh_anh_file.name.split('.').pop();
@@ -113,12 +105,10 @@ export const actions = {
         const { error } = await supabase.from('vat_tu').update({
             ten_vat_tu,
             don_vi,
-            so_luong,
-            don_gia,
-            ghi_chu,
+            so_luong_ton_kho,
+            don_gia_tham_khao,
             yeu_cau_ky_thuat,
-            thanh_tien,
-            hinh_anh
+            hinh_anh: hinh_anh || null
         }).eq('id', id);
 
         if (error) return { success: false, error: error.message };
@@ -214,23 +204,17 @@ export const actions = {
 
                 // Chuyển string thành number, nếu lỗi thì 0
                 const so_luong_str = row['E']?.toString().replace(/[^\d.-]/g, '');
-                const so_luong = so_luong_str ? parseInt(so_luong_str) : 0;
+                const so_luong_ton_kho = so_luong_str ? parseInt(so_luong_str) : 0;
 
                 const don_gia_str = row['F']?.toString().replace(/[^\d.-]/g, '');
-                const don_gia = don_gia_str ? parseFloat(don_gia_str) : 0;
-
-                const ghi_chu = row['H']?.toString().trim() || null;
-
-                const thanh_tien = so_luong * don_gia;
+                const don_gia_tham_khao = don_gia_str ? parseFloat(don_gia_str) : 0;
 
                 insertData.push({
                     ten_vat_tu,
                     yeu_cau_ky_thuat,
                     don_vi,
-                    so_luong,
-                    don_gia,
-                    thanh_tien,
-                    ghi_chu
+                    so_luong_ton_kho,
+                    don_gia_tham_khao
                 });
             }
 
